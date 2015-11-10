@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -Wall -fopenmp -O3
+CXXFLAGS = -Wall -fopenmp -g #-O3
 PROGS = db_sort set_lcas classify make_seqid_to_taxid_map db_shrink
 
 .PHONY: all install clean

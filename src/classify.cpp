@@ -17,6 +17,7 @@
  * along with Kraken.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <pthread.h>
 #include "kraken_headers.hpp"
 #include "krakendb.hpp"
 #include "krakenutil.hpp"
@@ -30,7 +31,8 @@ using namespace kraken;
 
 void parse_command_line(int argc, char **argv);
 void usage(int exit_code=EX_USAGE);
-void process_file(char *filename);
+void process_file(char *filename,int numOfThreads);
+static void* pclassify(void* args_);
 void classify_sequence(DNASequence &dna, ostringstream &koss,
                        ostringstream &coss, ostringstream &uoss);
 string hitlist_string(vector<uint32_t> &taxa, vector<uint8_t> &ambig);
@@ -58,11 +60,37 @@ size_t Work_unit_size = DEF_WORK_UNIT_SIZE;
 uint64_t total_classified = 0;
 uint64_t total_sequences = 0;
 uint64_t total_bases = 0;
+	
+pthread_mutex_t *lock;
+/*pthread_t putThread ;
+		void *pthreadStatus ;
+pthread_attr_t pthreadAttr ;
+pthread_attr_init( &pthreadAttr ) ;
+pthread_attr_setdetachstate( &pthreadAttr, PTHREAD_CREATE_JOINABLE ) ;
+		threads = ( pthread_t * )malloc( sizeof( pthread_t ) * numOfThreads ) ;
+		pthread_mutex_init( &mutexSampleKmers, NULL ) ;
+		pthread_mutex_init( &mutexStoreKmers, NULL ) ;
+		for ( i = 0 ; i < numOfThreads / 2 ; ++i )
+		{
+			pthread_create( &threads[i], &pthreadAttr, SampleKmers_Thread, (void *)&arg ) ;	
+		}
+		for ( i = 0 ; i < numOfThreads / 2 ; ++i )
+		{
+			pthread_join( threads[i], &pthreadStatus ) ;
+		}
+					if ( threadInit )
+						pthread_join( putThread, &pthreadStatus ) ;
+					pthread_create( &putThread, &pthreadAttr, SampleKmers_PutThread, ( void *)&putArg ) ;
+	pthread_attr_destroy( &pthreadAttr ) ;
+	pthread_exit( NULL ) ;
+//pthread_mutex_lock( myArg->lockPut ) ;
+//pthread_mutex_unlock( myArg->lockPut ) ;
+*/
 
 int main(int argc, char **argv) {
-  #ifdef _OPENMP
+  /*#ifdef _OPENMP
   omp_set_num_threads(1);
-  #endif
+  #endif*/
 
   parse_command_line(argc, argv);
   if (! Nodes_filename.empty())
@@ -114,7 +142,7 @@ int main(int argc, char **argv) {
   struct timeval tv1, tv2;
   gettimeofday(&tv1, NULL);
   for (int i = optind; i < argc; i++)
-    process_file(argv[i]);
+    process_file(argv[i],Num_threads);
   gettimeofday(&tv2, NULL);
 
   report_stats(tv1, tv2);
@@ -146,25 +174,63 @@ void report_stats(struct timeval time1, struct timeval time2) {
           (total_sequences - total_classified) * 100.0 / total_sequences);
 }
 
-void process_file(char *filename) {
+struct ReadKmersArg
+{
+	pthread_t thread_id;
+        int thread_num;
+        DNASequenceReader* reader;
+	pthread_mutex_t* readerLock;
+};
+	
+void process_file(char *filename,int numOfThreads) {
   string file_str(filename);
   DNASequenceReader *reader;
-  DNASequence dna;
 
   if (Fastq_input)
     reader = new FastqReader(file_str);
   else
     reader = new FastaReader(file_str);
 
-  #pragma omp parallel
+  //pthread_t *threads = ( pthread_t * ) calloc(numOfThreads, sizeof( pthread_t ));
+  ReadKmersArg* argss = ( ReadKmersArg* ) calloc(numOfThreads, sizeof(struct ReadKmersArg)); 
+  pthread_mutex_t mutexSampleKmers;
+  pthread_mutex_init( &mutexSampleKmers, NULL );
+  pthread_attr_t pthreadAttr;
+  pthread_attr_init( &pthreadAttr );
+  //pthread_attr_setdetachstate( &pthreadAttr, PTHREAD_CREATE_JOINABLE ) ;
+
+  int i=0;
+  for ( i = 0 ; i < numOfThreads; ++i )
   {
+     argss[i].reader=reader;
+     argss[i].readerLock=&mutexSampleKmers;
+     argss[i].thread_num=i+1;
+     pthread_create( &(argss[i].thread_id), &pthreadAttr, pclassify, (void *) &argss[i] ) ;	
+  }
+  void *pthreadStatus;
+  for ( i = 0 ; i < numOfThreads; ++i )
+  {
+     pthread_join( argss[i].thread_id, &pthreadStatus ) ;
+  }
+  pthread_attr_destroy( &pthreadAttr ) ;
+  
+  delete reader;
+}
+
+  //#pragma omp parallel
+static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
+{
+    struct ReadKmersArg* args=(struct ReadKmersArg*) args_;
+    DNASequenceReader* reader = args->reader;
     vector<DNASequence> work_unit;
     ostringstream kraken_output_ss, classified_output_ss, unclassified_output_ss;
+    DNASequence dna;
 
     while (reader->is_valid()) {
       work_unit.clear();
       size_t total_nt = 0;
-      #pragma omp critical(get_input)
+      //#pragma omp critical(get_input)
+      pthread_mutex_lock(args->readerLock);
       {
         while (total_nt < Work_unit_size) {
           dna = reader->next_sequence();
@@ -174,6 +240,7 @@ void process_file(char *filename) {
           total_nt += dna.seq.size();
         }
       }
+      pthread_mutex_unlock(args->readerLock);
       if (total_nt == 0)
         break;
       
@@ -184,7 +251,8 @@ void process_file(char *filename) {
         classify_sequence( work_unit[j], kraken_output_ss,
                            classified_output_ss, unclassified_output_ss );
 
-      #pragma omp critical(write_output)
+      //#pragma omp critical(write_output)
+      pthread_mutex_lock(args->readerLock);
       {
         if (Print_kraken)
           (*Kraken_output) << kraken_output_ss.str();
@@ -194,13 +262,14 @@ void process_file(char *filename) {
           (*Unclassified_output) << unclassified_output_ss.str();
         total_sequences += work_unit.size();
         total_bases += total_nt;
-        cerr << "\rProcessed " << total_sequences << " sequences (" << total_bases << " bp) ...";
+        cerr << "\r" << args->thread_num << " Processed " << total_sequences << " sequences (" << total_bases << " bp) ...";
       }
+      pthread_mutex_unlock(args->readerLock);
     }
-  }  // end parallel section
+  pthread_exit( NULL );
+  return NULL;
+}  // end parallel section
 
-  delete reader;
-}
 
 void classify_sequence(DNASequence &dna, ostringstream &koss,
                        ostringstream &coss, ostringstream &uoss) {
@@ -247,7 +316,7 @@ void classify_sequence(DNASequence &dna, ostringstream &koss,
     call = resolve_tree(hit_counts, Parent_map);
 
   if (call)
-    #pragma omp atomic
+    //#pragma omp atomic
     total_classified++;
 
   if (Print_unclassified || Print_classified) {
@@ -358,12 +427,12 @@ void parse_command_line(int argc, char **argv) {
         sig = atoll(optarg);
         if (sig <= 0)
           errx(EX_USAGE, "can't use nonpositive thread count");
-        #ifdef _OPENMP
+        /*#ifdef _OPENMP
         if (sig > omp_get_num_procs())
-          errx(EX_USAGE, "thread count exceeds number of processors");
+          errx(EX_USAGE, "thread count exceeds number of processors");*/
         Num_threads = sig;
-        omp_set_num_threads(Num_threads);
-        #endif
+        /*omp_set_num_threads(Num_threads);
+        #endif*/
         break;
       case 'n' :
         Nodes_filename = optarg;
