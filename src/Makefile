@@ -2,6 +2,10 @@ CXX = g++
 CXXFLAGS = -Wall -fopenmp -g #-O3
 PROGS = db_sort set_lcas classify make_seqid_to_taxid_map db_shrink
 
+#ifeq (1,$(WITH_THREAD_PROFILING))
+CXXFLAGS += -DPER_THREAD_TIMING=1
+#endif
+
 .PHONY: all install clean
 
 all: $(PROGS)

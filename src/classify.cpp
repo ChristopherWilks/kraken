@@ -23,6 +23,7 @@
 #include "krakenutil.hpp"
 #include "quickfile.hpp"
 #include "seqreader.hpp"
+#include "ThreadProfile.h"
 
 const size_t DEF_WORK_UNIT_SIZE = 500000;
 
@@ -221,12 +222,16 @@ void process_file(char *filename,int numOfThreads) {
 static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
 {
     struct ReadKmersArg* args=(struct ReadKmersArg*) args_;
+    char* msg=(char*) calloc(1024,sizeof(char));
+    sprintf(msg,"PClassify thread %d",args->thread_num);
+    ThreadProfile *tp = new ThreadProfile(msg);
     DNASequenceReader* reader = args->reader;
     vector<DNASequence> work_unit;
     ostringstream kraken_output_ss, classified_output_ss, unclassified_output_ss;
     DNASequence dna;
 
     while (reader->is_valid()) {
+      tp->update();
       work_unit.clear();
       size_t total_nt = 0;
       //#pragma omp critical(get_input)
@@ -266,6 +271,9 @@ static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
       }
       pthread_mutex_unlock(args->readerLock);
     }
+    tp->finish(); 
+    delete tp;
+    free(msg);
   pthread_exit( NULL );
   return NULL;
 }  // end parallel section
