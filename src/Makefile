@@ -22,7 +22,7 @@ db_sort: krakendb.o quickfile.o
 
 set_lcas: krakendb.o quickfile.o krakenutil.o seqreader.o
 
-classify: krakendb.o quickfile.o krakenutil.o seqreader.o
+classify: krakendb.o quickfile.o krakenutil.o seqreader.o mockseqreader.o
 
 make_seqid_to_taxid_map: quickfile.o
 
@@ -34,6 +34,9 @@ krakendb.o: krakendb.cpp krakendb.hpp quickfile.hpp
 
 seqreader.o: seqreader.cpp seqreader.hpp quickfile.hpp
 	$(CXX) $(CXXFLAGS) -c seqreader.cpp
+
+mockseqreader.o: mockseqreader.cpp mockseqreader.hpp quickfile.hpp
+	$(CXX) $(CXXFLAGS) -c mockseqreader.cpp
 
 quickfile.o: quickfile.cpp quickfile.hpp
 	$(CXX) $(CXXFLAGS) -c quickfile.cpp

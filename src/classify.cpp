@@ -22,8 +22,8 @@
 #include "krakendb.hpp"
 #include "krakenutil.hpp"
 #include "quickfile.hpp"
-#include "seqreader.hpp"
 #include "ThreadProfile.h"
+#include "mockseqreader.hpp"
 
 const size_t DEF_WORK_UNIT_SIZE = 500000;
 
@@ -179,18 +179,19 @@ struct ReadKmersArg
 {
 	pthread_t thread_id;
         int thread_num;
-        DNASequenceReader* reader;
+        MockSequenceReader* reader;
 	pthread_mutex_t* readerLock;
 };
 	
 void process_file(char *filename,int numOfThreads) {
   string file_str(filename);
-  DNASequenceReader *reader;
+  MockSequenceReader *reader;
 
-  if (Fastq_input)
+  /*if (Fastq_input)
     reader = new FastqReader(file_str);
   else
-    reader = new FastaReader(file_str);
+    reader = new FastaReader(file_str);*/
+  reader = new MockSequenceReader(numOfThreads);
 
   //pthread_t *threads = ( pthread_t * ) calloc(numOfThreads, sizeof( pthread_t ));
   ReadKmersArg* argss = ( ReadKmersArg* ) calloc(numOfThreads, sizeof(struct ReadKmersArg)); 
@@ -225,27 +226,27 @@ static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
     char* msg=(char*) calloc(1024,sizeof(char));
     sprintf(msg,"PClassify thread %d",args->thread_num);
     ThreadProfile *tp = new ThreadProfile(msg);
-    DNASequenceReader* reader = args->reader;
+    MockSequenceReader* reader = args->reader;
     vector<DNASequence> work_unit;
     ostringstream kraken_output_ss, classified_output_ss, unclassified_output_ss;
     DNASequence dna;
 
-    while (reader->is_valid()) {
+    while (reader->is_valid(args->thread_num)) {
       tp->update();
       work_unit.clear();
       size_t total_nt = 0;
       //#pragma omp critical(get_input)
-      pthread_mutex_lock(args->readerLock);
+      //pthread_mutex_lock(args->readerLock);
       {
         while (total_nt < Work_unit_size) {
-          dna = reader->next_sequence();
-          if (! reader->is_valid())
+          dna = reader->next_sequence(args->thread_num);
+          if (! reader->is_valid(args->thread_num))
             break;
           work_unit.push_back(dna);
           total_nt += dna.seq.size();
         }
       }
-      pthread_mutex_unlock(args->readerLock);
+      //pthread_mutex_unlock(args->readerLock);
       if (total_nt == 0)
         break;
       
