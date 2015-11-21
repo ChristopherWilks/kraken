@@ -17,13 +17,21 @@
  * along with Kraken.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <pthread.h>
+#include <tbb/tbb.h>
+#include <tbb/task_group.h>
+#include <tbb/mutex.h>
+#include <tbb/spin_mutex.h>
+#include <tbb/task_group.h>
 #include "kraken_headers.hpp"
 #include "krakendb.hpp"
 #include "krakenutil.hpp"
 #include "quickfile.hpp"
 #include "seqreader.hpp"
 #include "ThreadProfile.h"
+#include "tbb_classify.h"
+
+#define MUTEX_T tbb::mutex
+//#define MUTEX_T tbb::spin_mutex
 
 const size_t DEF_WORK_UNIT_SIZE = 500000;
 
@@ -33,7 +41,7 @@ using namespace kraken;
 void parse_command_line(int argc, char **argv);
 void usage(int exit_code=EX_USAGE);
 void process_file(char *filename,int numOfThreads);
-static void* pclassify(void* args_);
+//void* pclassify(void* args_);
 void classify_sequence(DNASequence &dna, ostringstream &koss,
                        ostringstream &coss, ostringstream &uoss);
 string hitlist_string(vector<uint32_t> &taxa, vector<uint8_t> &ambig);
@@ -62,32 +70,6 @@ uint64_t total_classified = 0;
 uint64_t total_sequences = 0;
 uint64_t total_bases = 0;
 	
-pthread_mutex_t *lock;
-/*pthread_t putThread ;
-		void *pthreadStatus ;
-pthread_attr_t pthreadAttr ;
-pthread_attr_init( &pthreadAttr ) ;
-pthread_attr_setdetachstate( &pthreadAttr, PTHREAD_CREATE_JOINABLE ) ;
-		threads = ( pthread_t * )malloc( sizeof( pthread_t ) * numOfThreads ) ;
-		pthread_mutex_init( &mutexSampleKmers, NULL ) ;
-		pthread_mutex_init( &mutexStoreKmers, NULL ) ;
-		for ( i = 0 ; i < numOfThreads / 2 ; ++i )
-		{
-			pthread_create( &threads[i], &pthreadAttr, SampleKmers_Thread, (void *)&arg ) ;	
-		}
-		for ( i = 0 ; i < numOfThreads / 2 ; ++i )
-		{
-			pthread_join( threads[i], &pthreadStatus ) ;
-		}
-					if ( threadInit )
-						pthread_join( putThread, &pthreadStatus ) ;
-					pthread_create( &putThread, &pthreadAttr, SampleKmers_PutThread, ( void *)&putArg ) ;
-	pthread_attr_destroy( &pthreadAttr ) ;
-	pthread_exit( NULL ) ;
-//pthread_mutex_lock( myArg->lockPut ) ;
-//pthread_mutex_unlock( myArg->lockPut ) ;
-*/
-
 int main(int argc, char **argv) {
   /*#ifdef _OPENMP
   omp_set_num_threads(1);
@@ -177,10 +159,12 @@ void report_stats(struct timeval time1, struct timeval time2) {
 
 struct ReadKmersArg
 {
-	pthread_t thread_id;
+	//pthread_t thread_id;
         int thread_num;
         DNASequenceReader* reader;
-	pthread_mutex_t* readerLock;
+	MUTEX_T* readerLock;
+	MUTEX_T* writerLock;
+	//pthread_mutex_t* readerLock;
 };
 	
 void process_file(char *filename,int numOfThreads) {
@@ -192,34 +176,29 @@ void process_file(char *filename,int numOfThreads) {
   else
     reader = new FastaReader(file_str);
 
-  //pthread_t *threads = ( pthread_t * ) calloc(numOfThreads, sizeof( pthread_t ));
   ReadKmersArg* argss = ( ReadKmersArg* ) calloc(numOfThreads, sizeof(struct ReadKmersArg)); 
-  pthread_mutex_t mutexSampleKmers;
-  pthread_mutex_init( &mutexSampleKmers, NULL );
-  pthread_attr_t pthreadAttr;
-  pthread_attr_init( &pthreadAttr );
-  //pthread_attr_setdetachstate( &pthreadAttr, PTHREAD_CREATE_JOINABLE ) ;
-
+  
+  tbb::task_group tbb_grp;
+  MUTEX_T mutexSampleKmers;
+  MUTEX_T mutexWriteKmers;
   int i=0;
   for ( i = 0 ; i < numOfThreads; ++i )
   {
      argss[i].reader=reader;
      argss[i].readerLock=&mutexSampleKmers;
+     argss[i].writerLock=&mutexWriteKmers;
      argss[i].thread_num=i+1;
-     pthread_create( &(argss[i].thread_id), &pthreadAttr, pclassify, (void *) &argss[i] ) ;	
+     //pthread_create( &(argss[i].thread_id), &pthreadAttr, pclassify, (void *) &argss[i] );
+     tbb_grp.run(pclassify(&argss[i]));
   }
-  void *pthreadStatus;
-  for ( i = 0 ; i < numOfThreads; ++i )
-  {
-     pthread_join( argss[i].thread_id, &pthreadStatus ) ;
-  }
-  pthread_attr_destroy( &pthreadAttr ) ;
+  tbb_grp.wait();
   
   delete reader;
 }
 
   //#pragma omp parallel
-static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
+//#static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
+void pclassify::operator()() //DNASequenceReader *reader, void *arg)
 {
     struct ReadKmersArg* args=(struct ReadKmersArg*) args_;
     char* msg=(char*) calloc(1024,sizeof(char));
@@ -235,7 +214,8 @@ static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
       work_unit.clear();
       size_t total_nt = 0;
       //#pragma omp critical(get_input)
-      pthread_mutex_lock(args->readerLock);
+      //pthread_mutex_lock(args->readerLock);
+      args->readerLock->lock();
       {
         while (total_nt < Work_unit_size) {
           dna = reader->next_sequence();
@@ -245,7 +225,8 @@ static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
           total_nt += dna.seq.size();
         }
       }
-      pthread_mutex_unlock(args->readerLock);
+      args->readerLock->unlock();
+      //pthread_mutex_unlock(args->readerLock);
       if (total_nt == 0)
         break;
       
@@ -257,7 +238,8 @@ static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
                            classified_output_ss, unclassified_output_ss );
 
       //#pragma omp critical(write_output)
-      pthread_mutex_lock(args->readerLock);
+      //pthread_mutex_lock(args->readerLock);
+      args->writerLock->lock();
       {
         if (Print_kraken)
           (*Kraken_output) << kraken_output_ss.str();
@@ -269,13 +251,13 @@ static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
         total_bases += total_nt;
         cerr << "\r" << args->thread_num << " Processed " << total_sequences << " sequences (" << total_bases << " bp) ...";
       }
-      pthread_mutex_unlock(args->readerLock);
+      args->writerLock->unlock();
+      //pthread_mutex_unlock(args->readerLock);
     }
     tp->finish(); 
     delete tp;
     free(msg);
-  pthread_exit( NULL );
-  return NULL;
+  //return NULL;
 }  // end parallel section
 
 
