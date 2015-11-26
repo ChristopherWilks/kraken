@@ -31,13 +31,16 @@ namespace kraken {
     {
       if(read_index[thread_num] >= num_reads)
           read_index[thread_num]=0;
-      dna.header_line = raw_list[read_index[thread_num]].id;
-      istringstream seq_id(dna.header_line);
-      seq_id >> dna.id;
+      //dna.header_line = raw_list[read_index[thread_num]].id;
+      //istringstream seq_id(dna.header_line);
+      //seq_id >> dna.id;
+      dna.id=raw_list[read_index[thread_num]].id;
       dna.seq = raw_list[read_index[thread_num]].seq;
       dna.quals = raw_list[read_index[thread_num]].qual;
       read_index[thread_num]++;
       thread_index[thread_num]++;
+      //read_index[thread_num]=read_index[thread_num]+1;
+      //thread_index[thread_num]=thread_index[thread_num]+1;
     }
     return dna;
   }

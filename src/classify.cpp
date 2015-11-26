@@ -204,8 +204,8 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
     
     int k=0;
     int z=0;
-    //while (reader->is_valid(args->thread_num-1)) {
-    while (k < total_per_thread) {
+    while (reader->is_valid(args->thread_num-1)) {
+    //while (k < total_per_thread) {
       tp->update();
       work_unit.clear();
       size_t total_nt = 0;
@@ -214,17 +214,17 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
       //pthread_mutex_lock(args->readerLock);
       {
         while (total_nt < Work_unit_size) {
-          //dna = reader->next_sequence(args->thread_num-1);
-          DNASequence dna2;
+          dna = reader->next_sequence(args->thread_num-1);
+          /*DNASequence dna2;
           dna2.id="SRR034966.19 090421_HWI-EAS255_9111_FC400PT_PE_7_1_6_2020 length=100";
           dna2.seq="AGAAATGGCTTGATGACTAGTAGGAATAAGGGGGAGAAAGTAAGTGAAAATTAAATTGAAGTAAAGAAAAAATGAAAAATAAAATAAAAAAGGAAGGAAG";
-          dna2.quals="FFDADFG?FGFA5AA8:>>@25555@5=A@DDDD98.<7@ADDDD?9<1A=CCC<GG?=FGDDDI=6=0)08<C6DGF6F9=?@?>?>BB>BE?GGG>GG";
-          //if (! reader->is_valid(args->thread_num-1))
-          work_unit.push_back(dna2);
-          total_nt += dna2.seq.size();
-          k++;
-          if (k > total_per_thread)
+          dna2.quals="FFDADFG?FGFA5AA8:>>@25555@5=A@DDDD98.<7@ADDDD?9<1A=CCC<GG?=FGDDDI=6=0)08<C6DGF6F9=?@?>?>BB>BE?GGG>GG";*/
+          if (! reader->is_valid(args->thread_num-1))
             break;
+          work_unit.push_back(dna);
+          total_nt += dna.seq.size();
+          k++;
+          //if (k > total_per_thread)
         }
       }
       //pthread_mutex_unlock(args->readerLock);

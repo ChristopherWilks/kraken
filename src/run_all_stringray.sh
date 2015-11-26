@@ -7,7 +7,7 @@ DR=`dirname $0`
 READS="/home/cwilks3/bowtie2/seqs_by_100.fq"
 
 echo "Max threads = $MAX_THREADS"
-MAX_THREADS=1
+MAX_THREADS=120
 run_th () {
 #for mode in very-fast fast sensitive very-sensitive ; do
   for ((t=$MAX_THREADS; t<=$MAX_THREADS; t=${t}+10)); do
@@ -34,7 +34,7 @@ run_th () {
 #run_th classify krakentbb120
 #exit 0
 
-run_th classify kraken_no_io_tbbreal_no_kraken_output
+run_th classify kraken_no_io_tbbreal_no_kraken_output2_no_classifyloop
 exit 0
 
 make clean    
