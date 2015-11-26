@@ -258,19 +258,19 @@ static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
                            classified_output_ss, unclassified_output_ss );
 
       //#pragma omp critical(write_output)
-      pthread_mutex_lock(args->readerLock);
+      //pthread_mutex_lock(args->readerLock);
       {
-        if (Print_kraken)
+        /*if (Print_kraken)
           (*Kraken_output) << kraken_output_ss.str();
         if (Print_classified)
           (*Classified_output) << classified_output_ss.str();
         if (Print_unclassified)
-          (*Unclassified_output) << unclassified_output_ss.str();
-        total_sequences += work_unit.size();
+          (*Unclassified_output) << unclassified_output_ss.str();*/
+        /*total_sequences += work_unit.size();
         total_bases += total_nt;
-        cerr << "\r" << args->thread_num << " Processed " << total_sequences << " sequences (" << total_bases << " bp) ...";
+        cerr << "\r" << args->thread_num << " Processed " << total_sequences << " sequences (" << total_bases << " bp) ...";*/
       }
-      pthread_mutex_unlock(args->readerLock);
+      //pthread_mutex_unlock(args->readerLock);
     }
     tp->finish(); 
     delete tp;
