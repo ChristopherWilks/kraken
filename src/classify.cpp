@@ -36,7 +36,7 @@ void parse_command_line(int argc, char **argv);
 void usage(int exit_code=EX_USAGE);
 void process_file(char *filename,int numOfThreads);
 void classify_sequence(DNASequence &dna, ostringstream &koss,
-                       ostringstream &coss, ostringstream &uoss, int tid, size_t j1);
+                       ostringstream &coss, ostringstream &uoss );
 string hitlist_string(vector<uint32_t> &taxa, vector<uint8_t> &ambig);
 set<uint32_t> get_ancestry(uint32_t taxon);
 void report_stats(struct timeval time1, struct timeval time2);
@@ -47,7 +47,7 @@ bool Quick_mode = false;
 bool Fastq_input = false;
 bool Print_classified = false;
 bool Print_unclassified = false;
-bool Print_kraken = true;
+bool Print_kraken = false;
 bool Populate_memory = false;
 bool Only_classified_kraken_output = false;
 uint32_t Minimum_hit_count = 1;
@@ -59,9 +59,6 @@ ostream *Unclassified_output;
 ostream *Kraken_output;
 size_t Work_unit_size = DEF_WORK_UNIT_SIZE;
 
-//vector<DNASequence> work_units[120]; 
-DNASequence** work_units[120];
-
 uint64_t total_classified = 0;
 uint64_t total_sequences = 0;
 uint64_t total_bases = 0;
@@ -71,15 +68,6 @@ int main(int argc, char **argv) {
   /*#ifdef _OPENMP
   omp_set_num_threads(1);
   #endif*/
-for(size_t z=0; z < 120; z++)
-{
-  work_units[z]=(DNASequence**) calloc(5100,sizeof(DNASequence*));
-}
-
-/*  for(int i=0; i < 120; i++)
-  {
-     work_units[i].reserve(5200);
-  }*/
 
   parse_command_line(argc, argv);
   if (! Nodes_filename.empty())
@@ -184,9 +172,11 @@ void process_file(char *filename,int numOfThreads) {
 
   tbb::task_group tbb_grp;
 
+      printf("b4 for %d\n",numOfThreads);
   int i=0;
   for ( i = 0 ; i < numOfThreads; ++i )
   {
+      printf("in for %d\n",numOfThreads);
      argss[i].reader=reader;
      argss[i].thread_num=i+1;
      tbb_grp.run(pclassify(&argss[i]));
@@ -204,36 +194,26 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
     sprintf(msg,"PClassify thread %d",args->thread_num);
     ThreadProfile *tp = new ThreadProfile(msg);
     MockSequenceReader* reader = args->reader;
-    //vector<DNASequence> work_unit;
-    //vector<DNASequence> work_unit = work_units[args->thread_num];
-    DNASequence** work_unit = work_units[args->thread_num];
+    vector<DNASequence> work_unit;
     ostringstream kraken_output_ss, classified_output_ss, unclassified_output_ss;
     DNASequence dna;
-    size_t work_unit_size=0;
-
-    while (reader->is_valid(args->thread_num)) {
+    
+      printf("in pclassify %d\n",args->thread_num-1);
+    while (reader->is_valid(args->thread_num-1)) {
       tp->update();
-      //work_unit.clear();
-      /*for(size_t z=0; z < work_unit_size; z++)
-      {
-         work_unit[z]=NULL;
-      }*/
+      work_unit.clear();
       size_t total_nt = 0;
-      size_t k=0;
       //#pragma omp critical(get_input)
       //pthread_mutex_lock(args->readerLock);
       {
         while (total_nt < Work_unit_size) {
-          dna = reader->next_sequence(args->thread_num);
-          if (! reader->is_valid(args->thread_num))
+          dna = reader->next_sequence(args->thread_num-1);
+          if (! reader->is_valid(args->thread_num-1))
             break;
-          //work_unit.push_back(dna);
-          work_unit[k]=&dna;
-          k++;
+          work_unit.push_back(dna);
           total_nt += dna.seq.size();
         }
       }
-      work_unit_size=k;
       //pthread_mutex_unlock(args->readerLock);
       if (total_nt == 0)
         break;
@@ -241,11 +221,10 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
       kraken_output_ss.str("");
       classified_output_ss.str("");
       unclassified_output_ss.str("");
-      //for (size_t j = 0; j < work_unit.size(); j++)
-      for (size_t j = 0; j < work_unit_size; j++)
-        classify_sequence( *(work_unit[j]), kraken_output_ss,
-                           classified_output_ss, unclassified_output_ss, args->thread_num, j );
-
+      for (size_t j = 0; j < work_unit.size(); j++)
+        classify_sequence( work_unit[j], kraken_output_ss,
+                           classified_output_ss, unclassified_output_ss );
+      
       //#pragma omp critical(write_output)
       /*if(false)
       {
@@ -254,11 +233,11 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
         if (Print_classified)
           (*Classified_output) << classified_output_ss.str();
         if (Print_unclassified)
-          (*Unclassified_output) << unclassified_output_ss.str();
+          (*Unclassified_output) << unclassified_output_ss.str();*/
         total_sequences += work_unit.size();
         total_bases += total_nt;
-        cerr << "\r" << args->thread_num << " Processed " << total_sequences << " sequences (" << total_bases << " bp) ...";
-      }*/
+        //cout << "\n" << args->thread_num << " 2Processed " << total_sequences << " sequences (" << total_bases << " bp) ...";
+      //}
     }
     tp->finish(); 
     delete tp;
@@ -267,7 +246,7 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
 
 
 void classify_sequence(DNASequence &dna, ostringstream &koss,
-                       ostringstream &coss, ostringstream &uoss, int tid, size_t j1) {
+                       ostringstream &coss, ostringstream &uoss ) {
   vector<uint32_t> taxa;
   vector<uint8_t> ambig_list;
   map<uint32_t, uint32_t> hit_counts;
