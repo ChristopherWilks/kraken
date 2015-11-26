@@ -64,6 +64,8 @@ uint64_t total_sequences = 0;
 uint64_t total_bases = 0;
 	
 
+int total_per_thread=200000;
+
 int main(int argc, char **argv) {
   /*#ifdef _OPENMP
   omp_set_num_threads(1);
@@ -176,7 +178,7 @@ void process_file(char *filename,int numOfThreads) {
   int i=0;
   for ( i = 0 ; i < numOfThreads; ++i )
   {
-      printf("in for %d\n",numOfThreads);
+      //printf("in for %d\n",numOfThreads);
      argss[i].reader=reader;
      argss[i].thread_num=i+1;
      tbb_grp.run(pclassify(&argss[i]));
@@ -185,7 +187,6 @@ void process_file(char *filename,int numOfThreads) {
   
   delete reader;
 }
-
   //#pragma omp parallel
 void pclassify::operator()() //DNASequenceReader *reader, void *arg)
 {
@@ -195,23 +196,35 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
     ThreadProfile *tp = new ThreadProfile(msg);
     MockSequenceReader* reader = args->reader;
     vector<DNASequence> work_unit;
-    ostringstream kraken_output_ss, classified_output_ss, unclassified_output_ss;
+      //printf("in pclassify %d\n",args->thread_num-1);
+    //DNASequence dnav[210000];
     DNASequence dna;
+    ostringstream kraken_output_ss, classified_output_ss, unclassified_output_ss;
+      //printf("in pclassify2 %d\n",args->thread_num-1);
     
-      printf("in pclassify %d\n",args->thread_num-1);
-    while (reader->is_valid(args->thread_num-1)) {
+    int k=0;
+    int z=0;
+    //while (reader->is_valid(args->thread_num-1)) {
+    while (k < total_per_thread) {
       tp->update();
       work_unit.clear();
       size_t total_nt = 0;
+      
       //#pragma omp critical(get_input)
       //pthread_mutex_lock(args->readerLock);
       {
         while (total_nt < Work_unit_size) {
-          dna = reader->next_sequence(args->thread_num-1);
-          if (! reader->is_valid(args->thread_num-1))
+          //dna = reader->next_sequence(args->thread_num-1);
+          DNASequence dna2;
+          dna2.id="SRR034966.19 090421_HWI-EAS255_9111_FC400PT_PE_7_1_6_2020 length=100";
+          dna2.seq="AGAAATGGCTTGATGACTAGTAGGAATAAGGGGGAGAAAGTAAGTGAAAATTAAATTGAAGTAAAGAAAAAATGAAAAATAAAATAAAAAAGGAAGGAAG";
+          dna2.quals="FFDADFG?FGFA5AA8:>>@25555@5=A@DDDD98.<7@ADDDD?9<1A=CCC<GG?=FGDDDI=6=0)08<C6DGF6F9=?@?>?>BB>BE?GGG>GG";
+          //if (! reader->is_valid(args->thread_num-1))
+          work_unit.push_back(dna2);
+          total_nt += dna2.seq.size();
+          k++;
+          if (k > total_per_thread)
             break;
-          work_unit.push_back(dna);
-          total_nt += dna.seq.size();
         }
       }
       //pthread_mutex_unlock(args->readerLock);
@@ -234,8 +247,8 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
           (*Classified_output) << classified_output_ss.str();
         if (Print_unclassified)
           (*Unclassified_output) << unclassified_output_ss.str();*/
-        total_sequences += work_unit.size();
-        total_bases += total_nt;
+        //total_sequences += work_unit.size();
+        //total_bases += total_nt;
         //cout << "\n" << args->thread_num << " 2Processed " << total_sequences << " sequences (" << total_bases << " bp) ...";
       //}
     }
