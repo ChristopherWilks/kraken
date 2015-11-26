@@ -44,9 +44,10 @@ int Num_threads = 1;
 string DB_filename, Index_filename, Nodes_filename;
 bool Quick_mode = false;
 bool Fastq_input = false;
+//makes ~18 second difference in multi-thread running time, no difference in single thread
 bool Print_classified = false;
 bool Print_unclassified = false;
-bool Print_kraken = true;
+bool Print_kraken = false;
 bool Populate_memory = false;
 bool Only_classified_kraken_output = false;
 uint32_t Minimum_hit_count = 1;
@@ -63,30 +64,6 @@ uint64_t total_sequences = 0;
 uint64_t total_bases = 0;
 	
 pthread_mutex_t *lock;
-/*pthread_t putThread ;
-		void *pthreadStatus ;
-pthread_attr_t pthreadAttr ;
-pthread_attr_init( &pthreadAttr ) ;
-pthread_attr_setdetachstate( &pthreadAttr, PTHREAD_CREATE_JOINABLE ) ;
-		threads = ( pthread_t * )malloc( sizeof( pthread_t ) * numOfThreads ) ;
-		pthread_mutex_init( &mutexSampleKmers, NULL ) ;
-		pthread_mutex_init( &mutexStoreKmers, NULL ) ;
-		for ( i = 0 ; i < numOfThreads / 2 ; ++i )
-		{
-			pthread_create( &threads[i], &pthreadAttr, SampleKmers_Thread, (void *)&arg ) ;	
-		}
-		for ( i = 0 ; i < numOfThreads / 2 ; ++i )
-		{
-			pthread_join( threads[i], &pthreadStatus ) ;
-		}
-					if ( threadInit )
-						pthread_join( putThread, &pthreadStatus ) ;
-					pthread_create( &putThread, &pthreadAttr, SampleKmers_PutThread, ( void *)&putArg ) ;
-	pthread_attr_destroy( &pthreadAttr ) ;
-	pthread_exit( NULL ) ;
-//pthread_mutex_lock( myArg->lockPut ) ;
-//pthread_mutex_unlock( myArg->lockPut ) ;
-*/
 
 int main(int argc, char **argv) {
   /*#ifdef _OPENMP
@@ -231,6 +208,8 @@ static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
     ostringstream kraken_output_ss, classified_output_ss, unclassified_output_ss;
     DNASequence dna;
 
+    int num_reads=0;
+    //while (reader->is_valid(args->thread_num,num_reads)) {
     while (reader->is_valid(args->thread_num)) {
       tp->update();
       work_unit.clear();
@@ -239,7 +218,9 @@ static void* pclassify(void* args_) //DNASequenceReader *reader, void *arg)
       //pthread_mutex_lock(args->readerLock);
       {
         while (total_nt < Work_unit_size) {
+          //dna = reader->next_sequence(args->thread_num,&num_reads);
           dna = reader->next_sequence(args->thread_num);
+          //if (! reader->is_valid(args->thread_num,num_reads))
           if (! reader->is_valid(args->thread_num))
             break;
           work_unit.push_back(dna);
@@ -369,6 +350,7 @@ void classify_sequence(DNASequence &dna, ostringstream &koss,
   }
 
   koss << endl;
+
 }
 
 string hitlist_string(vector<uint32_t> &taxa, vector<uint8_t> &ambig)

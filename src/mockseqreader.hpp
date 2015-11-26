@@ -11,8 +11,10 @@ namespace kraken {
   {
      public:
      MockSequenceReader(int num_threads);
+     //DNASequence next_sequence(int thread_num,int* num_reads_);
      DNASequence next_sequence(int thread_num);
      bool is_valid(int thread_num);
+     //bool is_valid(int thread_num,int num_reads_);
     
      private:
      bool valid;
