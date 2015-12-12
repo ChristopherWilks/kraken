@@ -22,6 +22,7 @@
 #include <tbb/mutex.h>
 #include <tbb/spin_mutex.h>
 #include <tbb/task_group.h>
+#include <tbb/atomic.h>
 #include "kraken_headers.hpp"
 #include "krakendb.hpp"
 #include "krakenutil.hpp"
@@ -67,6 +68,8 @@ ostream *Kraken_output;
 size_t Work_unit_size = DEF_WORK_UNIT_SIZE;
 
 uint64_t total_classified = 0;
+tbb::atomic<uint64_t> total_classified_atomic;
+
 uint64_t total_sequences = 0;
 uint64_t total_bases = 0;
 	
@@ -74,6 +77,7 @@ int main(int argc, char **argv) {
   /*#ifdef _OPENMP
   omp_set_num_threads(1);
   #endif*/
+  total_classified_atomic=0;
 
   parse_command_line(argc, argv);
   if (! Nodes_filename.empty())
@@ -128,6 +132,7 @@ int main(int argc, char **argv) {
     process_file(argv[i],Num_threads);
   gettimeofday(&tv2, NULL);
 
+  total_classified = total_classified_atomic; 
   report_stats(tv1, tv2);
 
   return 0;
@@ -164,6 +169,7 @@ struct ReadKmersArg
         DNASequenceReader* reader;
 	MUTEX_T* readerLock;
 	MUTEX_T* writerLock;
+	MUTEX_T* classifiedLock;
 	//pthread_mutex_t* readerLock;
 };
 	
@@ -306,8 +312,9 @@ void classify_sequence(DNASequence &dna, ostringstream &koss,
     call = resolve_tree(hit_counts, Parent_map);
 
   if (call)
+    total_classified_atomic.fetch_and_increment();
     //#pragma omp atomic
-    total_classified++;
+    //total_classified++;
 
   if (Print_unclassified || Print_classified) {
     ostringstream *oss_ptr = call ? &coss : &uoss;
