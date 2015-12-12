@@ -22,6 +22,7 @@
 #include <tbb/mutex.h>
 #include <tbb/spin_mutex.h>
 #include <tbb/task_group.h>
+#include <tbb/queuing_mutex.h>
 #include "kraken_headers.hpp"
 #include "krakendb.hpp"
 #include "krakenutil.hpp"
@@ -30,7 +31,8 @@
 #include "ThreadProfile.h"
 #include "tbb_classify.h"
 
-#define MUTEX_T tbb::mutex
+//#define MUTEX_T tbb::mutex
+#define MUTEX_T tbb::queuing_mutex
 //#define MUTEX_T tbb::spin_mutex
 
 const size_t DEF_WORK_UNIT_SIZE = 500000;
@@ -54,7 +56,7 @@ bool Quick_mode = false;
 bool Fastq_input = false;
 bool Print_classified = false;
 bool Print_unclassified = false;
-bool Print_kraken = true;
+bool Print_kraken = false;
 bool Populate_memory = false;
 bool Only_classified_kraken_output = false;
 uint32_t Minimum_hit_count = 1;
@@ -215,8 +217,9 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
       size_t total_nt = 0;
       //#pragma omp critical(get_input)
       //pthread_mutex_lock(args->readerLock);
-      args->readerLock->lock();
+      //args->readerLock->lock();
       {
+        MUTEX_T::scoped_lock lock(*(args->readerLock));
         while (total_nt < Work_unit_size) {
           dna = reader->next_sequence();
           if (! reader->is_valid())
@@ -225,7 +228,7 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
           total_nt += dna.seq.size();
         }
       }
-      args->readerLock->unlock();
+      //args->readerLock->unlock();
       //pthread_mutex_unlock(args->readerLock);
       if (total_nt == 0)
         break;
@@ -239,8 +242,9 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
 
       //#pragma omp critical(write_output)
       //pthread_mutex_lock(args->readerLock);
-      args->writerLock->lock();
+      //args->writerLock->lock();
       {
+        MUTEX_T::scoped_lock lock(*(args->writerLock));
         if (Print_kraken)
           (*Kraken_output) << kraken_output_ss.str();
         if (Print_classified)
@@ -251,7 +255,7 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
         total_bases += total_nt;
         cerr << "\r" << args->thread_num << " Processed " << total_sequences << " sequences (" << total_bases << " bp) ...";
       }
-      args->writerLock->unlock();
+      //args->writerLock->unlock();
       //pthread_mutex_unlock(args->readerLock);
     }
     tp->finish(); 
