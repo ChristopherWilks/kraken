@@ -32,6 +32,7 @@ namespace kraken {
 
   class DNASequenceReader {
     public:
+    virtual DNASequence next_sequence(DNASequence &dna) = 0; 
     virtual DNASequence next_sequence() = 0; 
     virtual bool is_valid() = 0;
     virtual ~DNASequenceReader() {}
@@ -41,11 +42,13 @@ namespace kraken {
     public:
     FastaReader(std::string filename);
     DNASequence next_sequence();
+    DNASequence next_sequence(DNASequence &dna);
     bool is_valid();
 
     private:
     std::ifstream file;
     std::string linebuffer;
+    DNASequence dna;
     bool valid;
   };
 
@@ -53,10 +56,13 @@ namespace kraken {
     public:
     FastqReader(std::string filename);
     DNASequence next_sequence();
+    DNASequence next_sequence(DNASequence &dna);
+    DNASequence next_sequence(char** seq,char** id,char** header_line,char** quals);
     bool is_valid();
 
     private:
     std::ifstream file;
+    DNASequence dna;
     bool valid;
   };
 }

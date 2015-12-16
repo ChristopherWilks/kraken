@@ -166,21 +166,39 @@ struct ReadKmersArg
 {
 	//pthread_t thread_id;
         int thread_num;
-        DNASequenceReader* reader;
+        //DNASequenceReader* reader;
+        FastqReader* reader;
 	MUTEX_T* readerLock;
 	MUTEX_T* writerLock;
 	MUTEX_T* classifiedLock;
+        int read_length;
+	DNASequence** dnaA;
+	int num_reads;
 	//pthread_mutex_t* readerLock;
 };
-	
+
+
+void clear_dnaseqs(DNASequence** dnaA,int num_reads)
+{
+     int z = 0;
+     for ( z = 0 ; z < num_reads; z++)
+     {
+	dnaA[z]->seq.clear();	
+	dnaA[z]->id.clear();	
+	dnaA[z]->header_line.clear();	
+	dnaA[z]->quals.clear();
+     }
+}
+
 void process_file(char *filename,int numOfThreads) {
   string file_str(filename);
-  DNASequenceReader *reader;
+  //DNASequenceReader *reader;
+  FastqReader* reader;
 
   if (Fastq_input)
     reader = new FastqReader(file_str);
-  else
-    reader = new FastaReader(file_str);
+  //else
+  //  reader = new FastaReader(file_str);
 
   ReadKmersArg* argss = ( ReadKmersArg* ) calloc(numOfThreads, sizeof(struct ReadKmersArg)); 
   
@@ -188,12 +206,30 @@ void process_file(char *filename,int numOfThreads) {
   MUTEX_T mutexSampleKmers;
   MUTEX_T mutexWriteKmers;
   int i=0;
+  int z=0;
+  int read_length=100;
+  int num_reads = DEF_WORK_UNIT_SIZE/read_length;
   for ( i = 0 ; i < numOfThreads; ++i )
   {
+     DNASequence **dnaA=(DNASequence**) malloc(num_reads*sizeof(DNASequence*));
+     /*for ( z = 0 ; z < num_reads; z++)
+     {
+	//printf("%d %d %d\n",z,read_length,num_reads);
+        DNASequence d;
+        dnaA[z]=&d;
+        dnaA[z]->seq.reserve(read_length+1);
+        dnaA[z]->quals.reserve(read_length+1);
+        dnaA[z]->header_line.reserve(read_length+1);
+        dnaA[z]->id.reserve(read_length+1);
+     }*/
+     //printf("after z\n");
      argss[i].reader=reader;
      argss[i].readerLock=&mutexSampleKmers;
      argss[i].writerLock=&mutexWriteKmers;
      argss[i].thread_num=i+1;
+     argss[i].read_length=read_length; //TODO: need to "peak" at the file and determine what the read length should be
+     argss[i].num_reads=num_reads; //TODO: need to "peak" at the file and determine what the read length should be
+     argss[i].dnaA=dnaA;
      //pthread_create( &(argss[i].thread_id), &pthreadAttr, pclassify, (void *) &argss[i] );
      tbb_grp.run(pclassify(&argss[i]));
   }
@@ -210,25 +246,67 @@ void pclassify::operator()() //DNASequenceReader *reader, void *arg)
     char* msg=(char*) calloc(1024,sizeof(char));
     sprintf(msg,"PClassify thread %d",args->thread_num);
     ThreadProfile *tp = new ThreadProfile(msg);
-    DNASequenceReader* reader = args->reader;
+
+
+    //DNASequenceReader* reader = args->reader;
+    FastqReader* reader = args->reader;
     vector<DNASequence> work_unit;
     ostringstream kraken_output_ss, classified_output_ss, unclassified_output_ss;
+    int read_length=101;
     DNASequence dna;
+    /*dna.seq.reserve(read_length);
+    dna.id.reserve(read_length);
+    dna.header_line.reserve(read_length);
+    dna.quals.reserve(read_length);*/
 
-    while (reader->is_valid()) {
+    char* seq=(char*) calloc(101,sizeof(char));
+    char* id=(char*) calloc(101,sizeof(char));
+    char* header_line=(char*) calloc(101,sizeof(char));
+    char* quals=(char*) calloc(101,sizeof(char));
+
+    /*dna.seq="AGAAATGGCTTGATGACTAGTAGGAATAAGGGGGAGAAAGTAAGTGAAAATTAAATTGAAGTAAAGAAAAAATGAAAAATAAAATAAAAAAGGAAGGAAG";
+    dna.quals="FFDADFG?FGFA5AA8:>>@25555@5=A@DDDD98.<7@ADDDD?9<1A=CCC<GG?=FGDDDI=6=0)08<C6DGF6F9=?@?>?>BB>BE?GGG>GG";
+    dna.id="SRR034966.253";
+    dna.header_line="SRR034966.253 090421_HWI-EAS255_9111_FC400PT_PE_7_1_10_2018 length=100";*/
+   
+    //for each thread (here) reserve it's own block of DNA strings to fit up to the total DNA chars
+    //"peak" at the length of a DNA string in the single thread portion to set this up if need be
+    //we could also reserve one large 500000 sized string, keep 2 extra arrays == num sequences
+    //array 1 stores all the headers, array 2 stores offset to start/length of each string in the block
+    int rounds=0;
+    while (reader->is_valid()) { // and rounds  < 40) {
+      rounds++;
       tp->update();
       work_unit.clear();
+      
+      /*dna.seq.clear();
+      dna.header_line.clear();
+      dna.id.clear();
+      dna.quals.clear();*/
+ 
+      //clear_dnaseqs(args->dnaA,args->num_reads);
       size_t total_nt = 0;
+      int a = 0;
       //#pragma omp critical(get_input)
       //pthread_mutex_lock(args->readerLock);
       args->readerLock->lock();
       {
+        //while (total_nt < Work_unit_size and a < args->num_reads) {
         while (total_nt < Work_unit_size) {
-          dna = reader->next_sequence();
+          reader->next_sequence(&seq,&id,&header_line,&quals);
+          //DNASequence dna;
+          dna.seq=string(seq); 
+          dna.id=string(id); 
+          dna.header_line=string(header_line); 
+          dna.quals=string(quals); 
+          //*(args->dnaA[a])=reader->next_sequence(*(args->dnaA[a]));
           if (! reader->is_valid())
             break;
           work_unit.push_back(dna);
           total_nt += dna.seq.size();
+          /*work_unit.push_back(*(args->dnaA[a]));
+          total_nt += args->dnaA[a]->seq.size();
+          a++;*/
         }
       }
       args->readerLock->unlock();
